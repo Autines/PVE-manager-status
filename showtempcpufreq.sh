@@ -5,6 +5,7 @@
 # 1. 温度中 crit → 超限，ACPITZ → 主板
 # 2. CPU频率显示为 CPU实时: 平均频率，不再列出所有核心，电源模式小写
 # 3. 温度单位°C，crit→超限°C，ACPITZ→主板°C
+# 4. 时间单位改“天”
 
 
 sNVMEInfo=true
@@ -129,21 +130,22 @@ cat > $contentforpvejs << 'EOF'
                 return '风扇: ' + fandata.join(';')
             }
             let name = v.match(/^[^-]+/)[0].toUpperCase();
-            // 将 ACPITZ 改为 主板
             if (name === 'ACPITZ') name = '主板';
-            let temp = v.match(/(?<=:\s+)[+-][\d.]+(?=.?°C)/g);
-            if ( temp ) {
-                temp = temp.map(v => Number(v).toFixed(0))
+            let temps = v.match(/(?<=:\s+)[+-][\d.]+(?=.?°C)/g);
+            if ( temps ) {
+                temps = temps.map(t => Number(t).toFixed(0))
+                let crit = v.match(/(?<=\bcrit\b[^+]+\+)\d+/);
                 if (/coretemp/i.test(name)) {
                     name = 'CPU';
-                    temp = temp[0] + ( temp.length > 1 ? ' ( ' +   temp.slice(1).join(' | ') + ' )' : '');
+                    // 第一个核心温度带°C，其他核心温度不带单位
+                    let mainTemp = temps[0] + '°C';
+                    let otherTemps = temps.length > 1 ? ' ( ' + temps.slice(1).join(' | ') + ' )' : '';
+                    let tempStr = mainTemp + otherTemps;
+                    return name + ': ' + tempStr + ( crit? ` ,超限: ${crit[0]}°C` : '');
                 } else {
-                    temp = temp[0];
+                    let tempStr = temps[0] + '°C';
+                    return name + ': ' + tempStr + ( crit? ` ,超限: ${crit[0]}°C` : '');
                 }
-                let crit = v.match(/(?<=\bcrit\b[^+]+\+)\d+/);
-                // 增加 °C 单位，crit 改为 超限
-				// 显示：CPU: 56(56|54|52|51)°C ,超限: 82°C | 主板: 28°C | NVME: 47°C ,超限: 84°C
-                return name + ': ' + temp + '°C' + ( crit? ` ,超限: ${crit[0]}°C` : '');
             } else {
                 return 'null'
             }
@@ -159,6 +161,7 @@ cat > $contentforpvejs << 'EOF'
         return c;
     }
 },
+
 {
     itemId: 'cpumhz',
     colspan: 2,
@@ -214,7 +217,7 @@ EOF
                     temp = ( temp !== undefined ) ? " | " + temp + '°C' : '' ;
 					let potHours = v.power_on_time?.hours;
 					let poth = v.power_cycle_count;
-					let pot = ( potHours !== undefined ) ? (" | 通电: " + (potHours / 24).toFixed(1) + '天' + ( poth ? ',次: '+ poth : '' )) : '';
+					let pot = ( potHours !== undefined ) ? (" | 通电: " + Math.round(potHours / 24) + '天' + ( poth ? ',次: '+ poth : '' )) : '';
 
                     let log = v.nvme_smart_health_information_log;
                     let rw=''; let health='';
@@ -292,9 +295,9 @@ EOF
                     if (! model) return '找不到硬盘，直通或已被卸载';
                     let temp = v.temperature?.current;
                     temp = ( temp !== undefined ) ? " | 温度: " + temp + '°C' : '' ;
-                    let pot = v.power_on_time?.hours;
-                    let poth = v.power_cycle_count;
-                    pot = ( pot !== undefined ) ? (" | 通电: " + pot + '时' + ( poth ? ',次: '+ poth : '' )) : '';
+					let potHours = v.power_on_time?.hours;
+					let poth = v.power_cycle_count;
+					let pot = ( potHours !== undefined ) ? (" | 通电: " + Math.round(potHours / 24) + '天' + ( poth ? ',次: '+ poth : '' )) : '';
                     let smart = v.smart_status?.passed;
                     if (smart === undefined ) smart = '';
                     else smart = ' | SMART: ' + (smart ? '正常' : '警告!');
